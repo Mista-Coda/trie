@@ -108,6 +108,7 @@ void add_completions_from_dir(Nob_String_View path, TrieNode* root) {
         }
         trie_add_word(root, nob_sv_from_cstr(entry->d_name));
     }
+    closedir(dir);
     nob_temp_rewind(mark);
 }
 
