@@ -1,6 +1,7 @@
 #define NOB_IMPLEMENTATION
 #include "nob.h"
 
+#include <dirent.h>
 #include <assert.h>
 #include <stdio.h>
 
@@ -83,16 +84,51 @@ StringDa trie_get_completions(TrieNode* root, Nob_String_View chars) {
     return da;
 }
 
-int main(void) {
+void add_completions_from_dir(Nob_String_View path, TrieNode* root) {
+    size_t mark = nob_temp_save();
+    DIR* dir = opendir(nob_temp_sv_to_cstr(path));
+    if (dir == NULL) {
+        nob_log(NOB_ERROR, "Failed to open dir: %s", strerror(errno));
+        return;
+    }
+
+    struct dirent *entry;
+    while ((entry = readdir(dir)) != NULL) {
+        if (strcmp(entry->d_name, ".") == 0) continue;
+        if (strcmp(entry->d_name, "..") == 0) continue;
+        if (entry->d_type == DT_DIR) {
+            Nob_String_Builder newPathBuilder = {0};
+            nob_sb_append_sv(&newPathBuilder, path);
+            nob_sb_append_cstr(&newPathBuilder, "/");
+            nob_sb_append_cstr(&newPathBuilder, entry->d_name);
+            Nob_String_View newPath = nob_sb_to_sv(newPathBuilder);
+            add_completions_from_dir(newPath, root);
+            sb_free(newPathBuilder);
+            continue;
+        }
+        trie_add_word(root, nob_sv_from_cstr(entry->d_name));
+    }
+    nob_temp_rewind(mark);
+}
+
+int main(int argc, char** argv) {
     TrieNode rootNode = {0};
-    trie_add_word(&rootNode, SVLIT("Hello"));
-    trie_add_word(&rootNode, SVLIT("Helium"));
-    trie_add_word(&rootNode, SVLIT("Apple"));
+    
+    if (argc > 1) {
+        add_completions_from_dir(nob_sv_from_cstr(argv[1]), &rootNode);
+    } else {
+        add_completions_from_dir(SVLIT("."), &rootNode);
+    }
 
-    StringDa da = trie_get_completions(&rootNode, SVLIT("He"));
+    while (true) {
+        char input[100];
+        scanf("%s", input);
+        StringDa da = trie_get_completions(&rootNode, nob_sv_from_cstr(input));
 
-    for (size_t i = 0; i < da.count; ++i) {
-        printf("Completion: "SV_Fmt"\n", SV_Arg(da.items[i]));
+        for (size_t i = 0; i < da.count; ++i) {
+            printf("Completion: "SV_Fmt"\n", SV_Arg(da.items[i]));
+        }
+
     }
 
     return 0;
